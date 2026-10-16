@@ -10,7 +10,7 @@ const date = new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'short', 
 const ROW_HEIGHT = 76
 const HEADER_HEIGHT = 44
 
-export function PipelineTable({ deals, totalCount, rowOffset, now, viewKey, selectedIds, saveStates, onRetrySave, onDiscardSave, pageSelectedCount, onToggleDeal, onTogglePage, onStageChange, onClearFilters }) {
+export function PipelineTable({ deals, totalCount, rowOffset, now, viewKey, selectedIds, saveStates, teammateUpdates, onSaveMine, onKeepCurrent, onRetrySave, onDiscardSave, pageSelectedCount, onToggleDeal, onTogglePage, onStageChange, onClearFilters }) {
   const scrollRef = useRef(null)
   const virtualizer = useVirtualizer({
     count: deals.length, getScrollElement: () => scrollRef.current,
@@ -48,6 +48,7 @@ export function PipelineTable({ deals, totalCount, rowOffset, now, viewKey, sele
             const owner = ownerById[deal.ownerId]
             const stage = stageById[deal.stageId]
             const save = saveStates.get(deal.id)
+            const update = teammateUpdates.get(deal.id)
             const days = daysSince(deal.lastActivityAt, now)
             return (
               <tr key={deal.id} aria-rowindex={rowOffset + row.index + 2} className={selectedIds.has(deal.id) ? 'selected-row' : ''}>
@@ -57,12 +58,17 @@ export function PipelineTable({ deals, totalCount, rowOffset, now, viewKey, sele
                 <td><div className="stage-cell">
                   <select className={`stage-select stage-${stage.color}`} value={deal.stageId} aria-label={`Stage for ${deal.id}, ${deal.company}, ${deal.name}`} onChange={(event) => onStageChange(deal, event.target.value)}>{STAGES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select>
                   {save && <span className={`row-save-status save-${save.status}`} title={save.error || undefined}>
-                    {save.status === 'saving' ? 'Saving…' : save.status === 'saved' ? 'Saved' : 'Unsaved'}
+                    {save.status === 'saving' ? 'Saving…' : save.status === 'saved' ? 'Saved' : save.status === 'conflict' ? 'Conflict' : 'Unsaved'}
                     {save.status === 'failed' && <>
                       <button type="button" onClick={() => onRetrySave(deal.id)} aria-label={`Retry save for ${deal.id}`}>Retry</button>
                       <button type="button" onClick={() => onDiscardSave(deal.id)} aria-label={`Discard unsaved move for ${deal.id}`}>Discard</button>
                     </>}
+                    {save.status === 'conflict' && <>
+                      <button type="button" onClick={() => onSaveMine(deal.id)} aria-label={`Save my stage for ${deal.id}`}>Save mine</button>
+                      <button type="button" onClick={() => onKeepCurrent(deal.id)} aria-label={`Keep current stage for ${deal.id}`}>Keep current</button>
+                    </>}
                   </span>}
+                  {!save && update && <span className="row-save-status teammate-row-update" title={`${update.actor?.name || 'A teammate'} updated this deal`}>Updated by {update.actor?.name.split(' ')[0] || 'teammate'}</span>}
                 </div></td>
                 <td><span className="owner-cell"><span className={`avatar avatar-${owner.color}`} aria-hidden="true">{owner.initials}</span><span>{owner.name}</span></span></td>
                 <td><time className={`activity ${days >= 14 && !['won', 'lost'].includes(deal.stageId) ? 'inactive' : ''}`} dateTime={deal.lastActivityAt} title={date.format(new Date(deal.lastActivityAt))}><span className="activity-dot" />{days === 0 ? 'Today' : days === 1 ? 'Yesterday' : `${days} days ago`}</time></td>

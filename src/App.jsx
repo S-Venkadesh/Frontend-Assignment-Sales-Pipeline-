@@ -1,11 +1,13 @@
 import { useDeferredValue, useMemo, useReducer, useRef, useState } from 'react'
-import { OWNERS, STAGES, daysSince, filterDeals } from './data/deals.js'
+import { OWNERS, STAGES, daysSince } from './data/deals.js'
 import { useDeals } from './hooks/useDeals.js'
 import { PipelineTable } from './components/PipelineTable.jsx'
 import { BulkActions } from './components/BulkActions.jsx'
 import { Pagination } from './components/Pagination.jsx'
 import { NetworkSimulator } from './components/NetworkSimulator.jsx'
 import { SavePanel } from './components/SavePanel.jsx'
+import { TeammateSimulator } from './components/TeammateSimulator.jsx'
+import { usePipelineView } from './hooks/usePipelineView.js'
 import { paginateDeals } from './data/pagination.js'
 import { selectionReducer } from './state/selection.js'
 import './App.css'
@@ -16,7 +18,7 @@ const number = new Intl.NumberFormat('en-US')
 const compactMoney = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 1 })
 
 function App() {
-  const { data: deals = EMPTY_DEALS, isPending, isError, refetch, changeStage, changeStages, saves, retryFailed, discardFailed } = useDeals()
+  const { data: deals = EMPTY_DEALS, isPending, isError, refetch, changeStage, changeStages, saves, retryFailed, discardFailed, saveMyStages, keepCurrentStages } = useDeals()
   const [filters, setFilters] = useState(DEFAULT_FILTERS)
   const [announcement, setAnnouncement] = useState('')
   const [selectedIds, dispatchSelection] = useReducer(selectionReducer, null, () => new Set())
@@ -25,9 +27,10 @@ function App() {
   const [bulkStage, setBulkStage] = useState('')
   const [bulkResult, setBulkResult] = useState('')
   const [bulkError, setBulkError] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
   const now = useRef(Date.now()).current
   const deferredSearch = useDeferredValue(filters.search)
-  const matching = useMemo(() => filterDeals(deals, { ...filters, search: deferredSearch }, now), [deals, filters.ownerId, filters.stageId, filters.inactivity, filters.sort, deferredSearch, now])
+  const { matching, hasUpdates } = usePipelineView(deals, { ...filters, search: deferredSearch }, now, saves.viewRevision, saves.teamRevision, refreshKey)
   const page = useMemo(() => paginateDeals(matching, pageIndex, pageSize), [matching, pageIndex, pageSize])
   const selectedStats = useMemo(() => {
     let matchingCount = 0
@@ -132,6 +135,7 @@ function App() {
           <div className="metric"><span className="metric-label">Needs attention</span><strong>{isPending ? '—' : number.format(summary.inactive)}</strong><span className="metric-caption"><span className="attention-dot" /> Open deals inactive for 14+ days</span></div>
         </section>
         <NetworkSimulator />
+        <TeammateSimulator activity={saves} disabled={isPending || isError} />
         <section className="pipeline-panel" aria-label="Opportunities">
           <div className="panel-heading"><div><h2>Opportunities <span className="count-badge">{number.format(deals.length)}</span></h2><p>Find the right deal and keep it moving.</p></div><span className="view-label"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="4" width="14" height="12" rx="2" /><path d="M3 8h14M3 12h14M8 4v12" /></svg> Table view</span></div>
           <div className="stage-tabs" role="group" aria-label="Filter by stage">
@@ -145,7 +149,11 @@ function App() {
             <label className="filter-control sort-control"><span>Sort:</span><select aria-label="Sort deals" value={filters.sort} onChange={(event) => setFilter('sort', event.target.value)}><option value="recent">Recent activity</option><option value="value-desc">Highest value</option><option value="value-asc">Lowest value</option><option value="company">Company A–Z</option></select></label>
           </div>
           <div className="results-bar"><p role="status" aria-live="polite">{isPending ? 'Preparing sample deals…' : `${number.format(matching.length)} ${hasFilters ? 'matching ' : ''}opportunities`}<span className="result-divider">·</span>{compactMoney.format(filteredValue / 100)} total value {filters.search !== deferredSearch && <span> · Searching…</span>}</p>{hasFilters && <button type="button" className="text-button" onClick={clearFilters}>Clear filters</button>}</div>
-          {!isPending && !isError && <SavePanel saves={saves} onRetry={retryFailed} onDiscard={discardFailed} />}
+          <div className="teammate-view-status">
+            <p role="status" aria-live="polite">{hasUpdates ? 'Teammate changes applied. Row order and filter membership stay fixed until you refresh the view.' : 'Live teammate updates preserve your current view.'}</p>
+            <button type="button" className="text-button" disabled={!hasUpdates} onClick={() => setRefreshKey((previous) => previous + 1)}>Refresh view</button>
+          </div>
+          {!isPending && !isError && <SavePanel saves={saves} onRetry={retryFailed} onDiscard={discardFailed} onSaveMine={saveMyStages} onKeepCurrent={keepCurrentStages} />}
           {!isPending && !isError && <BulkActions
             selectedCount={selectedIds.size}
             pageSelectedCount={selectedStats.pageCount}
@@ -167,9 +175,12 @@ function App() {
               totalCount={matching.length}
               rowOffset={page.offset}
               now={now}
-              viewKey={`${viewKey}|${page.pageIndex}|${pageSize}`}
+              viewKey={`${viewKey}|${page.pageIndex}|${pageSize}|${refreshKey}`}
               selectedIds={selectedIds}
               saveStates={saves.states}
+              teammateUpdates={saves.updates}
+              onSaveMine={(id) => saveMyStages([id])}
+              onKeepCurrent={(id) => keepCurrentStages([id])}
               onRetrySave={(id) => retryFailed([id])}
               onDiscardSave={(id) => discardFailed([id])}
               pageSelectedCount={selectedStats.pageCount}

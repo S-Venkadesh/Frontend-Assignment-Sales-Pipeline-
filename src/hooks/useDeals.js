@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useSyncExternalStore } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
 import { dealRepository } from '../data/dealRepository.js'
 import { SaveController } from '../state/saveController.js'
 
@@ -14,6 +14,7 @@ export function useDeals() {
     controllers.set(queryClient, controller)
   }
   const saves = useSyncExternalStore(controller.subscribe, controller.getSnapshot)
+  useEffect(() => dealRepository.subscribeTeammateUpdates((event) => controller.receiveUpdates([event])), [controller])
   const query = useQuery({
     queryKey: DEALS_KEY,
     queryFn: async () => controller.initialize(await dealRepository.getDeals()),
@@ -33,9 +34,9 @@ export function useDeals() {
     return { requestedIds: operation.items.map((item) => item.id), unchangedIds: operation.unchangedIds }
   }
 
-  function retryFailed(ids) {
+  function retryFailed(ids, status = 'failed') {
     const byStage = new Map()
-    for (const item of controller.retryItems(ids)) {
+    for (const item of controller.retryItems(ids, status)) {
       if (!byStage.has(item.stageId)) byStage.set(item.stageId, [])
       byStage.get(item.stageId).push(item.id)
     }
@@ -47,5 +48,7 @@ export function useDeals() {
     changeStage: (dealId, stageId) => changeStages([dealId], stageId),
     retryFailed,
     discardFailed: (ids) => controller.discard(ids),
+    saveMyStages: (ids) => retryFailed(ids, 'conflict'),
+    keepCurrentStages: (ids) => controller.discard(ids),
   }
 }

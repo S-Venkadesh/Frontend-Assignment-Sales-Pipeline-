@@ -1,4 +1,4 @@
-import { createDeals, STAGES } from './deals.js'
+import { createDeals, OWNERS, STAGES } from './deals.js'
 
 export const DEFAULT_NETWORK = { minDelay: 300, maxDelay: 1500, failureRate: 0.1 }
 
@@ -6,9 +6,13 @@ export function createDealRepository({ initialDeals, random = Math.random, wait 
   let records
   let settings = { ...DEFAULT_NETWORK }
   const latestOperations = new Map()
+  const teammateListeners = new Set()
+  let recordIds
+  let teammateSequence = 0
 
   function ensureData() {
     records ??= new Map((initialDeals ?? createDeals()).map((deal) => [deal.id, deal]))
+    recordIds ??= [...records.keys()]
   }
 
   function configureNetwork(next) {
@@ -46,21 +50,44 @@ export function createDealRepository({ initialDeals, random = Math.random, wait 
       if (operation.operationId < latestOperations.get(item.id)) {
         return { id: item.id, ok: false, kind: 'superseded', deal: current, error: 'A newer move replaced this request.' }
       }
+      if (item.expectedVersion !== current.version) {
+        return { id: item.id, ok: false, kind: 'conflict', deal: current, error: 'This deal changed while saving. Compare the stages before resolving it.' }
+      }
       if (random() < network.failureRate) {
         return { id: item.id, ok: false, kind: 'network', deal: current, error: 'Simulated network failure. Retry or discard this move.' }
       }
-      if (item.expectedVersion !== current.version) {
-        return { id: item.id, ok: false, kind: 'conflict', deal: current, error: 'This deal changed while saving. Retry your move or discard it.' }
-      }
       const timestamp = new Date(now()).toISOString()
-      const saved = { ...current, stageId: item.stageId, version: current.version + 1, updatedAt: timestamp, lastActivityAt: timestamp }
+      const saved = { ...current, stageId: item.stageId, version: current.version + 1, updatedAt: timestamp, lastActivityAt: timestamp, updatedBy: 'you' }
       records.set(item.id, saved)
       return { id: item.id, ok: true, deal: saved }
     })
     return { results, delay }
   }
 
-  return { getDeals, saveStages, configureNetwork }
+  function subscribeTeammateUpdates(listener) {
+    teammateListeners.add(listener)
+    return () => teammateListeners.delete(listener)
+  }
+
+  function simulateTeammateUpdate({ dealId, stageId, ownerId } = {}) {
+    ensureData()
+    const id = dealId || recordIds[Math.floor(random() * recordIds.length)]
+    const current = records.get(id)
+    if (!current) throw new Error('Deal not found. Enter a deal ID such as D-00001.')
+    const actor = ownerId ? OWNERS.find((owner) => owner.id === ownerId) : OWNERS[1 + Math.floor(random() * (OWNERS.length - 1))]
+    if (!actor) throw new Error('Unknown teammate')
+    const alternatives = STAGES.filter((stage) => stage.id !== current.stageId)
+    const nextStage = stageId || alternatives[Math.floor(random() * alternatives.length)].id
+    if (!STAGES.some((stage) => stage.id === nextStage)) throw new Error('Unknown stage')
+    const timestamp = new Date(now()).toISOString()
+    const deal = { ...current, stageId: nextStage, version: current.version + 1, updatedAt: timestamp, lastActivityAt: timestamp, updatedBy: actor.id }
+    records.set(id, deal)
+    const event = { eventId: ++teammateSequence, deal, actor, receivedAt: timestamp }
+    for (const listener of teammateListeners) listener(event)
+    return event
+  }
+
+  return { getDeals, saveStages, configureNetwork, subscribeTeammateUpdates, simulateTeammateUpdate }
 }
 
 export const dealRepository = createDealRepository()

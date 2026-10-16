@@ -121,6 +121,26 @@ h2 { display: flex; align-items: center; gap: 9px; font-size: 16px; font-weight:
 .stage-cell { display: flex; flex-direction: column; gap: 6px; }
 .row-save-status { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 9px; }
 .save-saving { color: #82709e; } .save-saved { color: #56866e; } .save-failed { color: #a5545e; }
+.save-conflict, .save-conflict-count { color: #a06e23; }
+.teammate-row-update { color: #4b7b9e; }
+.conflict-actions { margin-top: 12px; padding-top: 12px; border-top: 1px solid #eadfcf; }
+.conflict-actions > p { font-size: 11px; color: #8a704c; line-height: 1.5; margin-bottom: 7px; }
+.conflict-list { border-color: #e7d9c4; }
+.conflict-list .failed-deal-description strong { color: #9b783e; }
+.teammate-view-status { min-height: 48px; display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 9px 24px; border-top: 1px solid #e8eaf0; background: #fafcfe; color: #7a8799; font-size: 10px; }
+.teammate-view-status > p { line-height: 1.5; }
+.teammate-view-status > button { white-space: nowrap; flex-shrink: 0; }
+.teammate-simulator { margin-top: -16px; }
+.teammate-settings { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 22px; border: 1px solid #e3e6ed; border-radius: 8px; padding: 16px; background: #fff; }
+.teammate-settings > p { flex-basis: 100%; color: #9096a4; line-height: 1.5; }
+.teammate-toggle, .teammate-interval { display: flex; align-items: center; gap: 8px; }
+.teammate-settings .teammate-toggle, .teammate-settings .teammate-interval { flex-direction: row; }
+.teammate-toggle input { accent-color: #705ac0; width: 14px; height: 14px; }
+.teammate-settings input[type=checkbox] { padding: 0; }
+.teammate-interval select, .teammate-simulator form select { border: 1px solid #dfe2eb; border-radius: 5px; padding: 8px 10px; background: #fff; color: #444b60; font-size: 11px; }
+.teammate-message { flex-basis: 100%; min-height: 18px; line-height: 1.5; }
+.teammate-activity { flex-basis: 100%; height: 105px; overflow: auto; border-top: 1px solid #eef0f5; padding-top: 8px; }
+.teammate-activity > p { font-size: 10px; line-height: 1.7; color: #858c9d; }
 .row-save-status button { padding: 0; background: none; border: 0; color: #7052a1; text-decoration: underline; font-size: 9px; }
 .bulk-section { padding: 14px 24px; border-top: 1px solid #e8eaf0; background: #fcfbfe; }
 .bulk-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; }
@@ -155,3 +175,4 @@ button:disabled, select:disabled { cursor: default; }
 @media (max-width: 760px) { main { padding: 24px 16px 0; } .app-header { height: 64px; padding: 0 16px; } .workspace-name, .workspace-divider, .team-count, .workspace-meta > .status-dot { display: none; } .workspace-meta { font-size: 10px; } .brand { font-size: 20px; } .overview { grid-template-columns: 1fr 1fr; padding: 0; } .metric { padding: 20px; } .metric:nth-child(2) { border-right: 0; } .metric:nth-child(-n+2) { border-bottom: 1px solid #eceef3; } .metric strong { font-size: 26px; } .metric-caption { font-size: 10px; } .dataset-label { display: none; } h1 { font-size: 30px; } .panel-heading, .filter-bar { padding-left: 16px; padding-right: 16px; } .stage-tabs { padding: 0 16px; } .results-bar { padding-left: 16px; padding-right: 16px; } .search-box { flex-basis: 100%; } .filter-control { flex: 1; } .filter-control select { width: 100%; max-width: none; } .sort-control { flex-basis: 100%; justify-content: flex-end; height: 25px; } .sort-control select { width: auto; } .panel-footer { padding: 12px 16px; font-size: 9px; } .page-footer { gap: 16px; font-size: 9px; } .view-label { font-size: 10px; } }
 @media (max-width: 760px) { .bulk-section, .pagination { padding: 14px 16px; } .bulk-controls { flex-basis: 100%; } .bulk-controls .filter-control { flex: 1; min-width: 135px; } .bulk-controls > .text-button { padding: 6px 0; } .page-navigation { flex-basis: 100%; justify-content: flex-end; } .pagination { gap: 12px 8px; font-size: 10px; } }
 @media (max-width: 760px) { .save-panel { padding: 14px 16px; } .network-simulator summary { line-height: 1.7; } .network-simulator input { width: 125px; } .failed-deal { align-items: flex-start; flex-direction: column; gap: 4px; padding: 10px; } .failed-deal-description { width: 100%; } .failed-deal-actions { gap: 12px; } }
+@media (max-width: 760px) { .teammate-view-status { padding: 9px 16px; min-height: 70px; } .teammate-toggle input { width: 14px; } .teammate-simulator form select { max-width: 160px; } .teammate-settings { gap: 12px; } }
