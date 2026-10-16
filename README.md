@@ -87,3 +87,6 @@ One bulk request returns per-deal outcomes after its simulated delay. This model
 5. Choose “Keep current stage” to accept Contacted, or “Save my stage” to submit Won against the newer version. Neither choice changes the selection.
 
 To check context preservation, select a deal, scroll within a page, and enable automatic activity. Incoming changes leave selection, row positions, page, and scroll intact; use Refresh view to apply new ordering/membership.
+
+Live demo video: https://drive.google.com/file/d/1djHR-8UUSZdP7q82anXrHXdRcu0tfRQb/view?usp=sharing
+Live application link: https://frontend-assignment-sales-pipeline.vercel.app/
