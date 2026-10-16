@@ -4,6 +4,8 @@ import { useDeals } from './hooks/useDeals.js'
 import { PipelineTable } from './components/PipelineTable.jsx'
 import { BulkActions } from './components/BulkActions.jsx'
 import { Pagination } from './components/Pagination.jsx'
+import { NetworkSimulator } from './components/NetworkSimulator.jsx'
+import { SavePanel } from './components/SavePanel.jsx'
 import { paginateDeals } from './data/pagination.js'
 import { selectionReducer } from './state/selection.js'
 import './App.css'
@@ -14,7 +16,7 @@ const number = new Intl.NumberFormat('en-US')
 const compactMoney = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 1 })
 
 function App() {
-  const { data: deals = EMPTY_DEALS, isPending, isError, refetch, changeStage, changeStages } = useDeals()
+  const { data: deals = EMPTY_DEALS, isPending, isError, refetch, changeStage, changeStages, saves, retryFailed, discardFailed } = useDeals()
   const [filters, setFilters] = useState(DEFAULT_FILTERS)
   const [announcement, setAnnouncement] = useState('')
   const [selectedIds, dispatchSelection] = useReducer(selectionReducer, null, () => new Set())
@@ -91,9 +93,9 @@ function App() {
     setBulkResult('')
     setBulkError('')
     try {
-      const { changedIds, unchangedIds } = changeStages(selectedIds, bulkStage)
+      const { requestedIds, unchangedIds } = changeStages(selectedIds, bulkStage)
       const stage = STAGES.find((item) => item.id === bulkStage)
-      const moved = `Moved ${number.format(changedIds.length)} ${changedIds.length === 1 ? 'deal' : 'deals'} to ${stage.label} locally.`
+      const moved = requestedIds.length ? `Requested ${number.format(requestedIds.length)} moves to ${stage.label}. See save activity for results.` : 'No changes needed.'
       const unchanged = unchangedIds.length ? ` ${number.format(unchangedIds.length)} already in ${stage.label}; unchanged.` : ''
       setBulkResult(moved + unchanged)
       clearSelection()
@@ -103,8 +105,12 @@ function App() {
   }
 
   function handleStageChange(deal, stageId) {
-    changeStage(deal.id, stageId)
-    setAnnouncement(`${deal.id} moved to ${STAGES.find((stage) => stage.id === stageId).label}. Changed locally.`)
+    try {
+      changeStage(deal.id, stageId)
+      setAnnouncement(`${deal.id} moving to ${STAGES.find((stage) => stage.id === stageId).label}. Saving.`)
+    } catch (error) {
+      setBulkError(error.message)
+    }
   }
 
   return (
@@ -125,6 +131,7 @@ function App() {
           <div className="metric"><span className="metric-label">Closed won</span><strong className="positive">{isPending ? '—' : compactMoney.format(summary.wonValue / 100)}</strong><span className="metric-caption">{number.format(summary.counts.won)} opportunities won</span></div>
           <div className="metric"><span className="metric-label">Needs attention</span><strong>{isPending ? '—' : number.format(summary.inactive)}</strong><span className="metric-caption"><span className="attention-dot" /> Open deals inactive for 14+ days</span></div>
         </section>
+        <NetworkSimulator />
         <section className="pipeline-panel" aria-label="Opportunities">
           <div className="panel-heading"><div><h2>Opportunities <span className="count-badge">{number.format(deals.length)}</span></h2><p>Find the right deal and keep it moving.</p></div><span className="view-label"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="4" width="14" height="12" rx="2" /><path d="M3 8h14M3 12h14M8 4v12" /></svg> Table view</span></div>
           <div className="stage-tabs" role="group" aria-label="Filter by stage">
@@ -138,6 +145,7 @@ function App() {
             <label className="filter-control sort-control"><span>Sort:</span><select aria-label="Sort deals" value={filters.sort} onChange={(event) => setFilter('sort', event.target.value)}><option value="recent">Recent activity</option><option value="value-desc">Highest value</option><option value="value-asc">Lowest value</option><option value="company">Company A–Z</option></select></label>
           </div>
           <div className="results-bar"><p role="status" aria-live="polite">{isPending ? 'Preparing sample deals…' : `${number.format(matching.length)} ${hasFilters ? 'matching ' : ''}opportunities`}<span className="result-divider">·</span>{compactMoney.format(filteredValue / 100)} total value {filters.search !== deferredSearch && <span> · Searching…</span>}</p>{hasFilters && <button type="button" className="text-button" onClick={clearFilters}>Clear filters</button>}</div>
+          {!isPending && !isError && <SavePanel saves={saves} onRetry={retryFailed} onDiscard={discardFailed} />}
           {!isPending && !isError && <BulkActions
             selectedCount={selectedIds.size}
             pageSelectedCount={selectedStats.pageCount}
@@ -161,6 +169,9 @@ function App() {
               now={now}
               viewKey={`${viewKey}|${page.pageIndex}|${pageSize}`}
               selectedIds={selectedIds}
+              saveStates={saves.states}
+              onRetrySave={(id) => retryFailed([id])}
+              onDiscardSave={(id) => discardFailed([id])}
               pageSelectedCount={selectedStats.pageCount}
               onToggleDeal={toggleDeal}
               onTogglePage={(checked) => selectDeals(page.deals.map((deal) => deal.id), checked)}
@@ -169,7 +180,7 @@ function App() {
             />
             <Pagination page={page} pageSize={pageSize} onPageChange={setPageIndex} onPageSizeChange={changePageSize} />
           </>}
-          <div className="panel-footer"><span><span className="status-dot" /> Local demo · changes reset on refresh</span><span>Amounts in USD</span></div>
+          <div className="panel-footer"><span><span className="status-dot" /> Simulated saves · data resets on refresh</span><span>Amounts in USD</span></div>
         </section>
         <footer className="page-footer"><span>Built for a clearer pipeline.</span><span>50,000 deals. Just the rows you need.</span></footer>
       </main>

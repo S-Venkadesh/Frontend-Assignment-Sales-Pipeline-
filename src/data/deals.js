@@ -71,7 +71,7 @@ export function updateStage(deals, dealId, stageId, now = Date.now()) {
 }
 
 // One dataset pass, rather than copying/scanning 50,000 deals per selected ID.
-// Local changes are atomic; per-deal network outcomes belong to the next increment.
+// Pure local update utility. The network repository handles per-deal outcomes.
 export function updateStages(deals, dealIds, stageId, now = Date.now()) {
   if (!STAGES.some((stage) => stage.id === stageId)) throw new Error('Unknown stage')
   const remainingIds = new Set(dealIds)
