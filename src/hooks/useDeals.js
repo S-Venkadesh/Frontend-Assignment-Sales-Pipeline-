@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { changeDealStage, getDeals } from '../data/dealRepository.js'
+import { changeDealStage, changeDealStages, getDeals } from '../data/dealRepository.js'
 
 const DEALS_KEY = ['deals']
 
@@ -9,5 +9,10 @@ export function useDeals() {
   function changeStage(dealId, stageId) {
     queryClient.setQueryData(DEALS_KEY, changeDealStage(dealId, stageId))
   }
-  return { ...query, changeStage }
+  function changeStages(dealIds, stageId) {
+    const result = changeDealStages(dealIds, stageId)
+    queryClient.setQueryData(DEALS_KEY, result.deals)
+    return result
+  }
+  return { ...query, changeStage, changeStages }
 }

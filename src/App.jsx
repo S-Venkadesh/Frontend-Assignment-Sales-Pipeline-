@@ -1,7 +1,11 @@
-import { useDeferredValue, useMemo, useRef, useState } from 'react'
+import { useDeferredValue, useMemo, useReducer, useRef, useState } from 'react'
 import { OWNERS, STAGES, daysSince, filterDeals } from './data/deals.js'
 import { useDeals } from './hooks/useDeals.js'
 import { PipelineTable } from './components/PipelineTable.jsx'
+import { BulkActions } from './components/BulkActions.jsx'
+import { Pagination } from './components/Pagination.jsx'
+import { paginateDeals } from './data/pagination.js'
+import { selectionReducer } from './state/selection.js'
 import './App.css'
 
 const EMPTY_DEALS = []
@@ -10,12 +14,26 @@ const number = new Intl.NumberFormat('en-US')
 const compactMoney = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 1 })
 
 function App() {
-  const { data: deals = EMPTY_DEALS, isPending, isError, refetch, changeStage } = useDeals()
+  const { data: deals = EMPTY_DEALS, isPending, isError, refetch, changeStage, changeStages } = useDeals()
   const [filters, setFilters] = useState(DEFAULT_FILTERS)
   const [announcement, setAnnouncement] = useState('')
+  const [selectedIds, dispatchSelection] = useReducer(selectionReducer, null, () => new Set())
+  const [pageIndex, setPageIndex] = useState(0)
+  const [pageSize, setPageSize] = useState(100)
+  const [bulkStage, setBulkStage] = useState('')
+  const [bulkResult, setBulkResult] = useState('')
+  const [bulkError, setBulkError] = useState('')
   const now = useRef(Date.now()).current
   const deferredSearch = useDeferredValue(filters.search)
   const matching = useMemo(() => filterDeals(deals, { ...filters, search: deferredSearch }, now), [deals, filters.ownerId, filters.stageId, filters.inactivity, filters.sort, deferredSearch, now])
+  const page = useMemo(() => paginateDeals(matching, pageIndex, pageSize), [matching, pageIndex, pageSize])
+  const selectedStats = useMemo(() => {
+    let matchingCount = 0
+    let pageCount = 0
+    for (const deal of matching) if (selectedIds.has(deal.id)) matchingCount++
+    for (const deal of page.deals) if (selectedIds.has(deal.id)) pageCount++
+    return { matchingCount, pageCount, hiddenCount: selectedIds.size - matchingCount }
+  }, [matching, page.deals, selectedIds])
   const summary = useMemo(() => {
     const counts = Object.fromEntries(STAGES.map((stage) => [stage.id, 0]))
     let openValue = 0
@@ -36,7 +54,52 @@ function App() {
   const viewKey = `${deferredSearch}|${filters.ownerId}|${filters.stageId}|${filters.inactivity}|${filters.sort}`
 
   function setFilter(key, value) {
+    setPageIndex(0)
     setFilters((previous) => ({ ...previous, [key]: value }))
+  }
+
+  function clearFilters() {
+    setPageIndex(0)
+    setFilters(DEFAULT_FILTERS)
+  }
+
+  function changePageSize(size) {
+    setPageSize(size)
+    setPageIndex(0)
+  }
+
+  function selectDeals(ids, checked) {
+    dispatchSelection({ type: 'set-many', ids, checked })
+    setBulkResult('')
+    setBulkError('')
+  }
+
+  function toggleDeal(id) {
+    dispatchSelection({ type: 'toggle', id })
+    setBulkResult('')
+    setBulkError('')
+  }
+
+  function clearSelection() {
+    dispatchSelection({ type: 'clear' })
+    setBulkStage('')
+    setBulkError('')
+  }
+
+  function handleBulkMove() {
+    if (!selectedIds.size || !bulkStage) return
+    setBulkResult('')
+    setBulkError('')
+    try {
+      const { changedIds, unchangedIds } = changeStages(selectedIds, bulkStage)
+      const stage = STAGES.find((item) => item.id === bulkStage)
+      const moved = `Moved ${number.format(changedIds.length)} ${changedIds.length === 1 ? 'deal' : 'deals'} to ${stage.label} locally.`
+      const unchanged = unchangedIds.length ? ` ${number.format(unchangedIds.length)} already in ${stage.label}; unchanged.` : ''
+      setBulkResult(moved + unchanged)
+      clearSelection()
+    } catch (error) {
+      setBulkError(`${error.message}. Selection kept; try again.`)
+    }
   }
 
   function handleStageChange(deal, stageId) {
@@ -74,8 +137,38 @@ function App() {
             <label className="filter-control"><span className="sr-only">Filter by inactivity</span><select value={filters.inactivity} onChange={(event) => setFilter('inactivity', event.target.value)}><option value="">Any activity</option><option value="7">Inactive 7+ days</option><option value="14">Inactive 14+ days</option><option value="30">Inactive 30+ days</option></select></label>
             <label className="filter-control sort-control"><span>Sort:</span><select aria-label="Sort deals" value={filters.sort} onChange={(event) => setFilter('sort', event.target.value)}><option value="recent">Recent activity</option><option value="value-desc">Highest value</option><option value="value-asc">Lowest value</option><option value="company">Company A–Z</option></select></label>
           </div>
-          <div className="results-bar"><p role="status" aria-live="polite">{isPending ? 'Preparing sample deals…' : `${number.format(matching.length)} ${hasFilters ? 'matching ' : ''}opportunities`}<span className="result-divider">·</span>{compactMoney.format(filteredValue / 100)} total value {filters.search !== deferredSearch && <span> · Searching…</span>}</p>{hasFilters && <button type="button" className="text-button" onClick={() => setFilters(DEFAULT_FILTERS)}>Clear filters</button>}</div>
-          {isPending ? <div className="empty-state" role="status"><span className="loading-spinner" /><h3>Preparing your pipeline</h3><p>Loading 50,000 sample opportunities.</p></div> : isError ? <div className="empty-state" role="alert"><h3>Couldn’t load opportunities</h3><p>Try loading the sample dataset again.</p><button type="button" className="primary-button" onClick={() => refetch()}>Try again</button></div> : <PipelineTable deals={matching} now={now} viewKey={viewKey} onStageChange={handleStageChange} onClearFilters={() => setFilters(DEFAULT_FILTERS)} />}
+          <div className="results-bar"><p role="status" aria-live="polite">{isPending ? 'Preparing sample deals…' : `${number.format(matching.length)} ${hasFilters ? 'matching ' : ''}opportunities`}<span className="result-divider">·</span>{compactMoney.format(filteredValue / 100)} total value {filters.search !== deferredSearch && <span> · Searching…</span>}</p>{hasFilters && <button type="button" className="text-button" onClick={clearFilters}>Clear filters</button>}</div>
+          {!isPending && !isError && <BulkActions
+            selectedCount={selectedIds.size}
+            pageSelectedCount={selectedStats.pageCount}
+            hiddenCount={selectedStats.hiddenCount}
+            matchingCount={matching.length}
+            matchingSelectedCount={selectedStats.matchingCount}
+            isSearching={filters.search !== deferredSearch}
+            stageId={bulkStage}
+            onStageChange={setBulkStage}
+            onSelectMatching={() => selectDeals(matching.map((deal) => deal.id), true)}
+            onClear={clearSelection}
+            onMove={handleBulkMove}
+            error={bulkError}
+            result={bulkResult}
+          />}
+          {isPending ? <div className="empty-state" role="status"><span className="loading-spinner" /><h3>Preparing your pipeline</h3><p>Loading 50,000 sample opportunities.</p></div> : isError ? <div className="empty-state" role="alert"><h3>Couldn’t load opportunities</h3><p>Try loading the sample dataset again.</p><button type="button" className="primary-button" onClick={() => refetch()}>Try again</button></div> : <>
+            <PipelineTable
+              deals={page.deals}
+              totalCount={matching.length}
+              rowOffset={page.offset}
+              now={now}
+              viewKey={`${viewKey}|${page.pageIndex}|${pageSize}`}
+              selectedIds={selectedIds}
+              pageSelectedCount={selectedStats.pageCount}
+              onToggleDeal={toggleDeal}
+              onTogglePage={(checked) => selectDeals(page.deals.map((deal) => deal.id), checked)}
+              onStageChange={handleStageChange}
+              onClearFilters={clearFilters}
+            />
+            <Pagination page={page} pageSize={pageSize} onPageChange={setPageIndex} onPageSizeChange={changePageSize} />
+          </>}
           <div className="panel-footer"><span><span className="status-dot" /> Local demo · changes reset on refresh</span><span>Amounts in USD</span></div>
         </section>
         <footer className="page-footer"><span>Built for a clearer pipeline.</span><span>50,000 deals. Just the rows you need.</span></footer>

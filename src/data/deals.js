@@ -70,6 +70,28 @@ export function updateStage(deals, dealId, stageId, now = Date.now()) {
   return updated
 }
 
+// One dataset pass, rather than copying/scanning 50,000 deals per selected ID.
+// Local changes are atomic; per-deal network outcomes belong to the next increment.
+export function updateStages(deals, dealIds, stageId, now = Date.now()) {
+  if (!STAGES.some((stage) => stage.id === stageId)) throw new Error('Unknown stage')
+  const remainingIds = new Set(dealIds)
+  const changedIds = []
+  const unchangedIds = []
+  if (!remainingIds.size) return { deals, changedIds, unchangedIds }
+  const timestamp = new Date(now).toISOString()
+  const updated = deals.map((deal) => {
+    if (!remainingIds.delete(deal.id)) return deal
+    if (deal.stageId === stageId) {
+      unchangedIds.push(deal.id)
+      return deal
+    }
+    changedIds.push(deal.id)
+    return { ...deal, stageId, updatedAt: timestamp, lastActivityAt: timestamp, version: deal.version + 1 }
+  })
+  if (remainingIds.size) throw new Error('Deal not found')
+  return { deals: changedIds.length ? updated : deals, changedIds, unchangedIds }
+}
+
 export function filterDeals(deals, { search = '', ownerId = '', stageId = '', inactivity = '', sort = 'recent' } = {}, now = Date.now()) {
   const terms = search.trim().toLowerCase().split(/\s+/).filter(Boolean)
   const matching = deals.filter((deal) => {
