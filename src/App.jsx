@@ -10,6 +10,7 @@ import { TeammateSimulator } from './components/TeammateSimulator.jsx'
 import { usePipelineView } from './hooks/usePipelineView.js'
 import { paginateDeals } from './data/pagination.js'
 import { selectionReducer } from './state/selection.js'
+import { runWithFocusRecovery } from './utils/focus.js'
 import './App.css'
 
 const EMPTY_DEALS = []
@@ -18,20 +19,41 @@ const number = new Intl.NumberFormat('en-US')
 const compactMoney = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 1 })
 
 function App() {
-  const { data: deals = EMPTY_DEALS, isPending, isError, refetch, changeStage, changeStages, saves, retryFailed, discardFailed, saveMyStages, keepCurrentStages } = useDeals()
+
+  const {
+    data: deals = EMPTY_DEALS,
+    isPending,
+    isError,
+    refetch,
+    changeStage,
+    changeStages,
+    saves,
+    retryFailed,
+    discardFailed,
+    saveMyStages,
+    keepCurrentStages
+  } = useDeals()
+
   const [filters, setFilters] = useState(DEFAULT_FILTERS)
   const [announcement, setAnnouncement] = useState('')
-  const [selectedIds, dispatchSelection] = useReducer(selectionReducer, null, () => new Set())
   const [pageIndex, setPageIndex] = useState(0)
   const [pageSize, setPageSize] = useState(100)
   const [bulkStage, setBulkStage] = useState('')
   const [bulkResult, setBulkResult] = useState('')
   const [bulkError, setBulkError] = useState('')
+  const [bulkMove, setBulkMove] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0)
+
+  const [selectedIds, dispatchSelection] = useReducer(selectionReducer, null, () => new Set())
+
   const now = useRef(Date.now()).current
+
   const deferredSearch = useDeferredValue(filters.search)
+
   const { matching, hasUpdates } = usePipelineView(deals, { ...filters, search: deferredSearch }, now, saves.viewRevision, saves.teamRevision, refreshKey)
+
   const page = useMemo(() => paginateDeals(matching, pageIndex, pageSize), [matching, pageIndex, pageSize])
+
   const selectedStats = useMemo(() => {
     let matchingCount = 0
     let pageCount = 0
@@ -39,6 +61,7 @@ function App() {
     for (const deal of page.deals) if (selectedIds.has(deal.id)) pageCount++
     return { matchingCount, pageCount, hiddenCount: selectedIds.size - matchingCount }
   }, [matching, page.deals, selectedIds])
+
   const summary = useMemo(() => {
     const counts = Object.fromEntries(STAGES.map((stage) => [stage.id, 0]))
     let openValue = 0
@@ -54,8 +77,11 @@ function App() {
     }
     return { counts, openValue, wonValue, inactive }
   }, [deals, now])
+
   const filteredValue = useMemo(() => matching.reduce((total, deal) => total + deal.valueCents, 0), [matching])
+
   const hasFilters = Boolean(filters.search || filters.ownerId || filters.stageId || filters.inactivity)
+
   const viewKey = `${deferredSearch}|${filters.ownerId}|${filters.stageId}|${filters.inactivity}|${filters.sort}`
 
   function setFilter(key, value) {
@@ -97,6 +123,7 @@ function App() {
     setBulkError('')
     try {
       const { requestedIds, unchangedIds } = changeStages(selectedIds, bulkStage)
+      setBulkMove(requestedIds.length ? { ids: requestedIds, stageId: bulkStage, unchangedCount: unchangedIds.length } : null)
       const stage = STAGES.find((item) => item.id === bulkStage)
       const moved = requestedIds.length ? `Requested ${number.format(requestedIds.length)} moves to ${stage.label}. See save activity for results.` : 'No changes needed.'
       const unchanged = unchangedIds.length ? ` ${number.format(unchangedIds.length)} already in ${stage.label}; unchanged.` : ''
@@ -119,28 +146,57 @@ function App() {
   return (
     <div className="app-shell">
       <a className="skip-link" href="#pipeline-results">Skip to deals</a>
+
       <header className="app-header">
         <div className="brand"><span className="brand-mark" aria-hidden="true">p<span>·</span></span>pipeline<span className="workspace-divider" /><span className="workspace-name">Sales workspace</span></div>
         <div className="workspace-meta"><span className="status-dot" /> Demo workspace <span className="team-count">20 teammates</span><span className="avatar avatar-purple" aria-label="Alex Morgan">AM</span></div>
       </header>
+
       <main>
+
         <div className="page-heading">
           <div><p className="eyebrow">WORKSPACE / OPPORTUNITIES</p><h1>Sales pipeline<span className="heading-dot">.</span></h1><p className="page-description">Every opportunity. One clear view.</p></div>
           <span className="dataset-label"><span className="status-dot" /> Sample dataset</span>
         </div>
+
         <section className="overview" aria-label="Pipeline overview">
           <div className="metric"><span className="metric-label">Total opportunities</span><strong>{isPending ? '—' : number.format(deals.length)}</strong><span className="metric-caption">Across all seven stages</span></div>
           <div className="metric"><span className="metric-label">Open pipeline</span><strong>{isPending ? '—' : compactMoney.format(summary.openValue / 100)}</strong><span className="metric-caption">New leads through negotiation</span></div>
           <div className="metric"><span className="metric-label">Closed won</span><strong className="positive">{isPending ? '—' : compactMoney.format(summary.wonValue / 100)}</strong><span className="metric-caption">{number.format(summary.counts.won)} opportunities won</span></div>
           <div className="metric"><span className="metric-label">Needs attention</span><strong>{isPending ? '—' : number.format(summary.inactive)}</strong><span className="metric-caption"><span className="attention-dot" /> Open deals inactive for 14+ days</span></div>
         </section>
+
         <NetworkSimulator />
+
         <TeammateSimulator activity={saves} disabled={isPending || isError} />
+
         <section className="pipeline-panel" aria-label="Opportunities">
-          <div className="panel-heading"><div><h2>Opportunities <span className="count-badge">{number.format(deals.length)}</span></h2><p>Find the right deal and keep it moving.</p></div><span className="view-label"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="4" width="14" height="12" rx="2" /><path d="M3 8h14M3 12h14M8 4v12" /></svg> Table view</span></div>
+
+          <div className="panel-heading">
+
+            <div>
+              <h2>Opportunities <span className="count-badge">{number.format(deals.length)}</span></h2>
+              <p>Find the right deal and keep it moving.</p>
+            </div>
+
+            <span className="view-label">
+              <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <rect x="3" y="4" width="14" height="12" rx="2" />
+                <path d="M3 8h14M3 12h14M8 4v12" />
+              </svg>
+              Table view
+            </span>
+
+          </div>
+
           <div className="stage-tabs" role="group" aria-label="Filter by stage">
-            <button type="button" className={`stage-tab ${!filters.stageId ? 'active' : ''}`} aria-pressed={!filters.stageId} onClick={() => setFilter('stageId', '')}>All deals <span>{number.format(deals.length)}</span></button>
+
+            <button type="button" className={`stage-tab ${!filters.stageId ? 'active' : ''}`} aria-pressed={!filters.stageId} onClick={() => setFilter('stageId', '')}>
+              All deals <span>{number.format(deals.length)}</span>
+            </button>
+
             {STAGES.map((stage) => <button type="button" key={stage.id} className={`stage-tab ${filters.stageId === stage.id ? 'active' : ''}`} aria-pressed={filters.stageId === stage.id} onClick={() => setFilter('stageId', stage.id)}><span className={`stage-dot dot-${stage.color}`} />{stage.label}<span>{number.format(summary.counts[stage.id])}</span></button>)}
+
           </div>
           <div className="filter-bar">
             <label className="search-box"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" /><path d="m13 13 4 4" /></svg><span className="sr-only">Search deals by name, company, or ID</span><input type="search" placeholder="Search deals, companies, or IDs…" value={filters.search} onChange={(event) => setFilter('search', event.target.value)} /></label>
@@ -153,7 +209,7 @@ function App() {
             <p role="status" aria-live="polite">{hasUpdates ? 'Teammate changes applied. Row order and filter membership stay fixed until you refresh the view.' : 'Live teammate updates preserve your current view.'}</p>
             <button type="button" className="text-button" disabled={!hasUpdates} onClick={() => setRefreshKey((previous) => previous + 1)}>Refresh view</button>
           </div>
-          {!isPending && !isError && <SavePanel saves={saves} onRetry={retryFailed} onDiscard={discardFailed} onSaveMine={saveMyStages} onKeepCurrent={keepCurrentStages} />}
+          {!isPending && !isError && <SavePanel saves={saves} bulkMove={bulkMove} onRetry={(ids) => runWithFocusRecovery(() => retryFailed(ids))} onDiscard={(ids) => runWithFocusRecovery(() => discardFailed(ids))} onSaveMine={(ids) => runWithFocusRecovery(() => saveMyStages(ids))} onKeepCurrent={(ids) => runWithFocusRecovery(() => keepCurrentStages(ids))} />}
           {!isPending && !isError && <BulkActions
             selectedCount={selectedIds.size}
             pageSelectedCount={selectedStats.pageCount}
@@ -170,6 +226,7 @@ function App() {
             result={bulkResult}
           />}
           {isPending ? <div className="empty-state" role="status"><span className="loading-spinner" /><h3>Preparing your pipeline</h3><p>Loading 50,000 sample opportunities.</p></div> : isError ? <div className="empty-state" role="alert"><h3>Couldn’t load opportunities</h3><p>Try loading the sample dataset again.</p><button type="button" className="primary-button" onClick={() => refetch()}>Try again</button></div> : <>
+            <p className="keyboard-hint">Keyboard: Tab through controls. On a deal checkbox, ↑/↓ moves between deals and Home/End reaches the first/last row on this page.</p>
             <PipelineTable
               deals={page.deals}
               totalCount={matching.length}
@@ -179,10 +236,10 @@ function App() {
               selectedIds={selectedIds}
               saveStates={saves.states}
               teammateUpdates={saves.updates}
-              onSaveMine={(id) => saveMyStages([id])}
-              onKeepCurrent={(id) => keepCurrentStages([id])}
-              onRetrySave={(id) => retryFailed([id])}
-              onDiscardSave={(id) => discardFailed([id])}
+              onSaveMine={(id) => runWithFocusRecovery(() => saveMyStages([id]))}
+              onKeepCurrent={(id) => runWithFocusRecovery(() => keepCurrentStages([id]))}
+              onRetrySave={(id) => runWithFocusRecovery(() => retryFailed([id]))}
+              onDiscardSave={(id) => runWithFocusRecovery(() => discardFailed([id]))}
               pageSelectedCount={selectedStats.pageCount}
               onToggleDeal={toggleDeal}
               onTogglePage={(checked) => selectDeals(page.deals.map((deal) => deal.id), checked)}
@@ -193,6 +250,7 @@ function App() {
           </>}
           <div className="panel-footer"><span><span className="status-dot" /> Simulated saves · data resets on refresh</span><span>Amounts in USD</span></div>
         </section>
+
         <footer className="page-footer"><span>Built for a clearer pipeline.</span><span>50,000 deals. Just the rows you need.</span></footer>
       </main>
       <div className="sr-only" role="status" aria-live="polite">{announcement}</div>

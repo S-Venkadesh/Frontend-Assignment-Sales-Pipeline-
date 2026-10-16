@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { OWNERS, STAGES, daysSince } from '../data/deals.js'
 import { SelectionCheckbox } from './SelectionCheckbox.jsx'
+import { useVirtualKeyboard } from '../hooks/useVirtualKeyboard.js'
 
 const ownerById = Object.fromEntries(OWNERS.map((owner) => [owner.id, owner]))
 const stageById = Object.fromEntries(STAGES.map((stage) => [stage.id, stage]))
@@ -17,6 +18,7 @@ export function PipelineTable({ deals, totalCount, rowOffset, now, viewKey, sele
     estimateSize: () => ROW_HEIGHT, getItemKey: (index) => deals[index].id,
     scrollMargin: HEADER_HEIGHT, overscan: 8,
   })
+  const onKeyDown = useVirtualKeyboard(scrollRef, virtualizer, deals.length)
   // Reset only for explicit view changes. Editing a deal preserves scroll.
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = 0
@@ -29,8 +31,9 @@ export function PipelineTable({ deals, totalCount, rowOffset, now, viewKey, sele
   if (!deals.length) return <div className="empty-state" id="pipeline-results" tabIndex={-1}><span className="empty-icon" aria-hidden="true">⌕</span><h3>No opportunities found</h3><p>Try a different search or broaden your filters.</p><button type="button" className="primary-button" onClick={onClearFilters}>Clear filters</button></div>
 
   return (
-    <div className="table-scroll" ref={scrollRef} id="pipeline-results" tabIndex={0} role="region" aria-label="Deal table, scroll to see more opportunities">
+    <div className="table-scroll" ref={scrollRef} id="pipeline-results" tabIndex={0} role="region" aria-label="Deal table, scroll to see more opportunities" onKeyDown={onKeyDown}>
       <table className="deals-table" aria-label="Sales opportunities" aria-rowcount={totalCount + 1}>
+        <caption className="sr-only">Tab moves through every deal control. On a deal checkbox, use Up and Down to move between deals, or Home and End to reach the first and last deal on this page.</caption>
         <colgroup><col className="selection-col" /><col className="deal-col" /><col className="value-col" /><col className="stage-col" /><col className="owner-col" /><col className="activity-col" /></colgroup>
         <thead><tr aria-rowindex={1}>
           <th scope="col" className="selection-cell"><SelectionCheckbox
@@ -51,7 +54,7 @@ export function PipelineTable({ deals, totalCount, rowOffset, now, viewKey, sele
             const update = teammateUpdates.get(deal.id)
             const days = daysSince(deal.lastActivityAt, now)
             return (
-              <tr key={deal.id} aria-rowindex={rowOffset + row.index + 2} className={selectedIds.has(deal.id) ? 'selected-row' : ''}>
+              <tr key={deal.id} data-virtual-index={row.index} data-deal-id={deal.id} aria-rowindex={rowOffset + row.index + 2} className={selectedIds.has(deal.id) ? 'selected-row' : ''}>
                 <td className="selection-cell"><SelectionCheckbox label={`Select ${deal.id}, ${deal.company}, ${deal.name}`} checked={selectedIds.has(deal.id)} onChange={() => onToggleDeal(deal.id)} /></td>
                 <td><div className="deal-identity"><span className={`company-avatar avatar-${owner.color}`} aria-hidden="true">{deal.company.slice(0, 2).toUpperCase()}</span><div className="deal-text"><span className="deal-name" title={deal.name}>{deal.name}</span><span className="deal-company" title={`${deal.company} · ${deal.id}`}>{deal.company}<span> · {deal.id}</span></span></div></div></td>
                 <td><span className="deal-value">{money.format(deal.valueCents / 100)}</span></td>

@@ -4,11 +4,16 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "start": "node scripts/start.mjs",
     "dev": "vite",
     "build": "vite build",
     "test": "node --test",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check": "npm test && npm run build"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.0.0",
